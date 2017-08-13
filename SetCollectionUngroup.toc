@@ -1,0 +1,7 @@
+﻿## Interface: 70200
+## Title: SetCollectionUngroup
+## Notes: Ungrouping sets collection.
+## Author: Riningan
+## Version: 1.0
+
+SetCollectionUngroup.lua
