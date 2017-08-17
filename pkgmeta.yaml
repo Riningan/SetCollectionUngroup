@@ -1,2 +1,6 @@
 package-as: SetCollectionUngroup
 enable-nolib-creation: no
+
+ignore:
+  - README.md
+  - preview.png

@@ -7,20 +7,23 @@ local SET_PROGRESS_BAR_MAX_WIDTH = 204;
 local _SetsDataProvider = nil;
 local _ButtonHeight = nil;
 local _CountAll = nil;
-local _CountCollected = nil;
+local _CurSelectSetID = nil;
+local _PrevSelectSetID = nil;
+local _PrevScrollValue = nil;
+local _CurScrollValue = nil;
 local OriginHybridScrollFrame_Update = nil;
 
 
-local function BindSet(pButton, baseSet, variantSet, isHeader)
-	local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(variantSet.setID);
+local function BindSet(pButton, pBaseSet, pVariantSet, pIsHeader)
+	local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(pVariantSet.setID);
 	local setCollected = numCollected == numTotal;
 	local selectedSetID = WardrobeCollectionFrameScrollFrame:GetParent():GetSelectedSetID();
 	
-	pButton.setID = baseSet.setID;
-	pButton.setVariantID = variantSet.setID;
+	pButton.setID = pBaseSet.setID;
+	pButton.setVariantID = pVariantSet.setID;
 	pButton:Show();
 	
-	pButton.Name:SetText(variantSet.name);
+	pButton.Name:SetText(pVariantSet.name);
 	local color = IN_PROGRESS_FONT_COLOR;
 	if setCollected then
 		color = NORMAL_FONT_COLOR;
@@ -29,29 +32,29 @@ local function BindSet(pButton, baseSet, variantSet, isHeader)
 	end
 	pButton.Name:SetTextColor(color.r, color.g, color.b);
 	
-	if variantSet.description and variantSet.label then
-		pButton.Label:SetText(variantSet.description .. ' - ' .. variantSet.label);
+	if pVariantSet.description and pVariantSet.label then
+		pButton.Label:SetText(pVariantSet.description .. ' - ' .. pVariantSet.label);
 	else
-		pButton.Label:SetText(variantSet.label);
+		pButton.Label:SetText(pVariantSet.label);
 	end
 	
-	if isHeader then
+	if pIsHeader then
 		pButton.IconCover:Show();
 		pButton.IconCover:SetShown(false);
 		pButton.Icon:Show();
 		pButton.Icon:SetDesaturation(0);
-		pButton.Icon:SetTexture(_SetsDataProvider:GetIconForSet(baseSet.setID));
+		pButton.Icon:SetTexture(_SetsDataProvider:GetIconForSet(pBaseSet.setID));
 		pButton.Icon:SetDesaturation((topSourcesCollected == 0) and 1 or 0);
-		pButton.Favorite:SetShown(baseSet.favoriteSetID);
+		pButton.Favorite:SetShown(pBaseSet.favoriteSetID);
 	else
 		pButton.IconCover:Hide();
 		pButton.Icon:Hide();
 		pButton.Favorite:Hide();
 	end
 	
-	pButton.New:SetShown(_SetsDataProvider:IsBaseSetNew(baseSet.setID));
+	pButton.New:SetShown(_SetsDataProvider:IsBaseSetNew(pBaseSet.setID));
 	
-	pButton.SelectedTexture:SetShown(variantSet.setID == selectedSetID);
+	pButton.SelectedTexture:SetShown(pVariantSet.setID == selectedSetID);
 	
 	if numCollected == 0 or setCollected then
 		pButton.ProgressBar:Hide();
@@ -72,6 +75,73 @@ local function BindSet(pButton, baseSet, variantSet, isHeader)
 			--PlaySound("igMainMenuOptionCheckBoxOn");
 		end
 	end)
+end
+
+local function CalculateCount()
+	_CountAll = 0;
+	local countCollected = 0;
+	local baseSets = _SetsDataProvider:GetBaseSets();
+	for _, baseSet in pairs(baseSets) do
+		local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
+		if #variantSets > 0 then
+			for _, variantSet in pairs(variantSets) do
+				local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(variantSet.setID);
+				if numTotal > 0 then
+					_CountAll = _CountAll + 1;
+					if numCollected == numTotal then
+						countCollected = countCollected + 1;
+					end
+				end
+			end
+		else
+			local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(baseSet.setID);
+			if numTotal > 0 then
+				_CountAll = _CountAll + 1;
+				if numCollected == numTotal then
+					countCollected = countCollected + 1;
+				end
+			end
+		end
+	end
+	
+	WardrobeCollectionFrame.progressBar:SetMinMaxValues(0, _CountAll);
+	WardrobeCollectionFrame.progressBar:SetValue(countCollected);
+	WardrobeCollectionFrame.progressBar.text:SetFormattedText(HEIRLOOMS_PROGRESS_FORMAT, countCollected, _CountAll);
+end
+
+local function ScrollToSet(pSelf, pSetID)
+	local totalHeight = 0;
+	local scrollFrameHeight = pSelf.ScrollFrame:GetHeight();
+	local baseSets = _SetsDataProvider:GetBaseSets();
+	local b = false;
+	for _, baseSet in pairs(baseSets) do
+		local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
+		if #variantSets > 0 then
+			for _, variantSet in pairs(variantSets) do
+				if variantSet.setID == pSetID then
+					b = true;
+					break;
+				end
+				totalHeight = totalHeight + _ButtonHeight;
+			end
+			if b then
+				break;
+			end
+		else
+			if baseSet.setID == pSetID then
+				break;
+			else
+				totalHeight = totalHeight + _ButtonHeight;
+			end
+		end
+	end
+	local offset = _PrevScrollValue;
+	if totalHeight + _ButtonHeight > offset + scrollFrameHeight then
+		offset = totalHeight + _ButtonHeight - scrollFrameHeight;
+	elseif totalHeight < offset then
+		offset = totalHeight;
+	end
+	pSelf.ScrollFrame.scrollBar:SetValue(offset, true);
 end
 
 function MyHybridScrollFrame_Update(pSelf, pTotalHeight, pDisplayedHeight)
@@ -138,36 +208,64 @@ function MyHybridScrollFrame_Update(pSelf, pTotalHeight, pDisplayedHeight)
 	end
 end
 
-local function Init()
-	_CountAll = 0;
-	_CountCollected = 0;
+local function HookSelectSet(pSelf, pSetID)
+	_PrevSelectSetID = _CurSelectSetID;
+	_CurSelectSetID = pSetID;
+end
+
+local function HookScrollSetValue(pSelf, pValue)
+	_PrevScrollValue = _CurScrollValue;
+	_CurScrollValue = pValue;
+end
+
+local function HookHandleKey(pSelf, pKey)
+	local selectedSetID = pSelf:GetSelectedSetID();
+	if not selectedSetID then
+		return;
+	end
+	
 	local baseSets = _SetsDataProvider:GetBaseSets();
+	local prevSet = nil;
+	local curSet = nil;
+	local nextSet = nil;
 	for _, baseSet in pairs(baseSets) do
 		local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
 		if #variantSets > 0 then
 			for _, variantSet in pairs(variantSets) do
-				local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(variantSet.setID);
-				if numTotal > 0 then
-					_CountAll = _CountAll + 1;
-					if numCollected == numTotal then
-						_CountCollected = _CountCollected + 1;
-					end
+				if curSet then
+					nextSet = variantSet;
+					break;
+				end
+				if _PrevSelectSetID == variantSet.setID then
+					curSet = variantSet;
+				else
+					prevSet = variantSet;
 				end
 			end
 		else
-			local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(baseSet.setID);
-			if numTotal > 0 then
-				_CountAll = _CountAll + 1;
-				if numCollected == numTotal then
-					_CountCollected = _CountCollected + 1;
-				end
+			if curSet then
+				nextSet = baseSet;
+			elseif _PrevSelectSetID == baseSet.setID then
+				curSet = baseSet;
+			else
+				prevSet = baseSet;
 			end
 		end
+		if nextSet then
+			break;
+		end
 	end
-	
-	WardrobeCollectionFrame.progressBar:SetMinMaxValues(0, _CountAll);
-	WardrobeCollectionFrame.progressBar:SetValue(_CountCollected);
-	WardrobeCollectionFrame.progressBar.text:SetFormattedText(HEIRLOOMS_PROGRESS_FORMAT, _CountCollected, _CountAll);
+	if pKey == WARDROBE_DOWN_VISUAL_KEY then
+		if nextSet then
+			pSelf:SelectSet(nextSet.setID);
+			ScrollToSet(pSelf, nextSet.setID);
+		end
+	elseif pKey == WARDROBE_UP_VISUAL_KEY then
+		if prevSet then
+			pSelf:SelectSet(prevSet.setID);
+			ScrollToSet(pSelf, prevSet.setID);
+		end
+	end
 end
 
 local frame = CreateFrame("frame"); 
@@ -176,22 +274,34 @@ frame:SetScript("OnEvent", function(pSelf, pEvent, pUnit)
 	if pEvent == "ADDON_LOADED" and pUnit == "Blizzard_Collections" then
 		_ButtonHeight = WardrobeCollectionFrameScrollFrame.buttons[1]:GetHeight();
 		_SetsDataProvider = CreateFromMixins(WardrobeSetsDataProviderMixin);
-		Init()
+		_CurSelectSetID = _SetsDataProvider:GetBaseSets()[1].setID;
+		_CurScrollValue = 0;
+		local variantSets = _SetsDataProvider:GetVariantSets(_CurSelectSetID);
+		if #variantSets > 0 then
+			_CurSelectSetID = variantSets[1].setID;
+		end
+		WardrobeCollectionFrame.SetsCollectionFrame:SelectSet(_CurSelectSetID);
+		
+		CalculateCount()
 		
 		OriginHybridScrollFrame_Update = HybridScrollFrame_Update;
-		HybridScrollFrame_Update = MyHybridScrollFrame_Update
+		HybridScrollFrame_Update = MyHybridScrollFrame_Update;
+		
+		hooksecurefunc(WardrobeCollectionFrame.SetsCollectionFrame, "HandleKey", HookHandleKey);
+		hooksecurefunc(WardrobeCollectionFrame.SetsCollectionFrame, "SelectSet", HookSelectSet);
+		hooksecurefunc(WardrobeCollectionFrame.SetsCollectionFrame.ScrollFrame.scrollBar, "SetValue", HookScrollSetValue);
 		
 		frame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED");
 		frame:RegisterEvent("PLAYER_REGEN_ENABLED");
 		frame:RegisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
 	elseif pEvent == "TRANSMOG_COLLECTION_UPDATED" and _SetsDataProvider then
 		_SetsDataProvider:ClearSets();
-		Init()
+		CalculateCount()
 	elseif pEvent == "PLAYER_REGEN_ENABLED" and _SetsDataProvider then
 		_SetsDataProvider:ClearSets();
-		Init()
+		CalculateCount()
 	elseif pEvent == "TRANSMOG_SETS_UPDATE_FAVORITE" and _SetsDataProvider then
 		_SetsDataProvider:ClearSets();
-		Init()
+		CalculateCount()
 	end
 end)
