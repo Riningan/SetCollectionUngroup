@@ -1,34 +1,61 @@
-﻿local _AddonName, _Addon = ...;
+local _AddonName, _Addon = ...;
+
 
 local IN_PROGRESS_FONT_COLOR = CreateColor(0.251, 0.753, 0.251);
 local SET_PROGRESS_BAR_MAX_WIDTH = 204;
 
 
+local _ScrollFrame = nil;
+local _FavoriteDropDown = nil;
 local _SetsDataProvider = nil;
 local _ButtonHeight = nil;
-local _CountAll = nil;
-local _CurSelectSetID = nil;
-local _PrevSelectSetID = nil;
-local _PrevScrollValue = nil;
-local _CurScrollValue = nil;
-local OriginHybridScrollFrame_Update = nil;
 
 
-local function BindSet(pButton, pBaseSet, pVariantSet, pIsHeader)
+local function CalculateCount()
+	local countAll = 0;
+	local countCollected = 0;
+	local baseSets = _SetsDataProvider:GetBaseSets();
+	for _, baseSet in pairs(baseSets) do
+		local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
+		if #variantSets > 0 then
+			for _, variantSet in pairs(variantSets) do
+				local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(variantSet.setID);
+				if numTotal > 0 then
+					countAll = countAll + 1;
+					if numCollected == numTotal then
+						countCollected = countCollected + 1;
+					end
+				end
+			end
+		else
+			local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(baseSet.setID);
+			if numTotal > 0 then
+				countAll = countAll + 1;
+				if numCollected == numTotal then
+					countCollected = countCollected + 1;
+				end
+			end
+		end
+	end
+	return countAll, countCollected;
+end
+
+function ScrollFrameButton_BindSet(pButton, pBaseSet, pVariantSet, pIsHeader)
 	local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(pVariantSet.setID);
 	local setCollected = numCollected == numTotal;
-	local selectedSetID = WardrobeCollectionFrameScrollFrame:GetParent():GetSelectedSetID();
 	
 	pButton.setID = pBaseSet.setID;
 	pButton.setVariantID = pVariantSet.setID;
 	pButton:Show();
 	
 	pButton.Name:SetText(pVariantSet.name);
-	local color = IN_PROGRESS_FONT_COLOR;
+	local color;
 	if setCollected then
 		color = NORMAL_FONT_COLOR;
 	elseif numCollected == 0 then
 		color = GRAY_FONT_COLOR;
+	else 
+		color = IN_PROGRESS_FONT_COLOR;
 	end
 	pButton.Name:SetTextColor(color.r, color.g, color.b);
 	
@@ -54,64 +81,97 @@ local function BindSet(pButton, pBaseSet, pVariantSet, pIsHeader)
 	
 	pButton.New:SetShown(_SetsDataProvider:IsBaseSetNew(pBaseSet.setID));
 	
-	pButton.SelectedTexture:SetShown(pVariantSet.setID == selectedSetID);
+	pButton.SelectedTexture:SetShown(pVariantSet.setID == _ScrollFrame.selectedSetID);
 	
-	if numCollected == 0 or setCollected then
+	if numCollected == 0 then
 		pButton.ProgressBar:Hide();
 	else
 		pButton.ProgressBar:Show();
 		pButton.ProgressBar:SetWidth(SET_PROGRESS_BAR_MAX_WIDTH * numCollected / numTotal);
 	end
-	
-	pButton:RegisterForClicks("AnyUp", "AnyDown");
-	pButton:SetScript("OnMouseUp", function(pSelf, pButton, pDown)
-		if pButton == "LeftButton" then
-			--PlaySound("igMainMenuOptionCheckBoxOn");
-			pSelf:GetParent():GetParent():GetParent():SelectSet(pSelf.setVariantID);
-		elseif pButton == "RightButton" then
-			local dropDown = pSelf:GetParent():GetParent().FavoriteDropDown;
-			dropDown.baseSetID = pSelf.setID;
-			ToggleDropDownMenu(1, nil, dropDown, pSelf, 0, 0);
-			--PlaySound("igMainMenuOptionCheckBoxOn");
-		end
-	end)
 end
 
-local function CalculateCount()
-	_CountAll = 0;
-	local countCollected = 0;
+function ScrollFrame_Update()
+	_SetsDataProvider:ClearSets();
+	
+	local offset = HybridScrollFrame_GetOffset(_ScrollFrame) + 1;
 	local baseSets = _SetsDataProvider:GetBaseSets();
+	local buttons = _ScrollFrame.buttons;
+	local index = 0;
+	local indexButton = 1; 
 	for _, baseSet in pairs(baseSets) do
+		if indexButton > #buttons then
+			break;
+		end
+		index = index + 1;
 		local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
-		if #variantSets > 0 then
-			for _, variantSet in pairs(variantSets) do
-				local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(variantSet.setID);
-				if numTotal > 0 then
-					_CountAll = _CountAll + 1;
-					if numCollected == numTotal then
-						countCollected = countCollected + 1;
-					end
-				end
+		if #variantSets == 0 then
+			if offset <= index then
+				ScrollFrameButton_BindSet(buttons[indexButton], baseSet, baseSet, true);
+				indexButton = indexButton + 1;
 			end
 		else
-			local numCollected, numTotal = _SetsDataProvider:GetSetSourceCounts(baseSet.setID);
-			if numTotal > 0 then
-				_CountAll = _CountAll + 1;
-				if numCollected == numTotal then
-					countCollected = countCollected + 1;
+			if offset <= index then
+				ScrollFrameButton_BindSet(buttons[indexButton], baseSet, variantSets[1], true);
+				indexButton = indexButton + 1;
+			end
+			for i = 2, #variantSets do
+				if indexButton > #buttons then
+					break;
 				end
+				index = index + 1;
+				if offset <= index then
+					ScrollFrameButton_BindSet(buttons[indexButton], baseSet, variantSets[i], false);
+					indexButton = indexButton + 1;
+				end	
 			end
 		end
 	end
+	for i = indexButton, #buttons do 
+		buttons[i]:Hide();
+	end
 	
-	WardrobeCollectionFrame.progressBar:SetMinMaxValues(0, _CountAll);
+	local countAll, countCollected = CalculateCount();
+	
+	WardrobeCollectionFrame.progressBar:SetMinMaxValues(0, countAll);
 	WardrobeCollectionFrame.progressBar:SetValue(countCollected);
-	WardrobeCollectionFrame.progressBar.text:SetFormattedText(HEIRLOOMS_PROGRESS_FORMAT, countCollected, _CountAll);
+	WardrobeCollectionFrame.progressBar.text:SetFormattedText(HEIRLOOMS_PROGRESS_FORMAT, countCollected, countAll);
+	
+	local totalHeight = countAll * _ButtonHeight;
+	local range = math.floor(totalHeight - _ScrollFrame:GetHeight() + 0.5);
+	if range > 0 then
+		local minVal, maxVal = _ScrollFrame.scrollBar:GetMinMaxValues();
+		_ScrollFrame.scrollBar:SetMinMaxValues(0, range)
+		if math.floor(_ScrollFrame.scrollBar:GetValue()) >= math.floor(maxVal) then
+			if math.floor(_ScrollFrame.scrollBar:GetValue()) ~= math.floor(range) then
+				_ScrollFrame.scrollBar:SetValue(range);
+			else
+				HybridScrollFrame_SetOffset(_ScrollFrame, range); 
+			end
+		end
+		_ScrollFrame.scrollBar:Enable();
+		HybridScrollFrame_UpdateButtonStates(_ScrollFrame);
+		_ScrollFrame.scrollBar:Show();
+	else
+		_ScrollFrame.scrollBar:SetValue(0);
+		_ScrollFrame.scrollBar:Disable();
+		_ScrollFrame.scrollUp:Disable();
+		_ScrollFrame.scrollDown:Disable();
+		_ScrollFrame.scrollBar.thumbTexture:Hide();
+	end
+	_ScrollFrame.range = range;
+	_ScrollFrame:UpdateScrollChildRect();
 end
 
-local function ScrollToSet(pSelf, pSetID)
+local function ScrollFrame_SelectSet(pSetID)
+	_ScrollFrame.selectedSetID = pSetID;
+	WardrobeCollectionFrame.SetsCollectionFrame:SelectSet(pSetID);
+	ScrollFrame_Update();
+end
+
+local function ScrollFrame_ScrollToSet(pSetID)
 	local totalHeight = 0;
-	local scrollFrameHeight = pSelf.ScrollFrame:GetHeight();
+	local scrollFrameHeight = _ScrollFrame:GetHeight();
 	local baseSets = _SetsDataProvider:GetBaseSets();
 	local b = false;
 	for _, baseSet in pairs(baseSets) do
@@ -135,92 +195,16 @@ local function ScrollToSet(pSelf, pSetID)
 			end
 		end
 	end
-	local offset = _PrevScrollValue;
-	if totalHeight + _ButtonHeight > offset + scrollFrameHeight then
-		offset = totalHeight + _ButtonHeight - scrollFrameHeight;
-	elseif totalHeight < offset then
-		offset = totalHeight;
+	if totalHeight + _ButtonHeight > _ScrollFrame.scrollBar.scrollValue + scrollFrameHeight then
+		_ScrollFrame.scrollBar.scrollValue = totalHeight + _ButtonHeight - scrollFrameHeight;
+	elseif totalHeight < _ScrollFrame.scrollBar.scrollValue then
+		_ScrollFrame.scrollBar.scrollValue = totalHeight;
 	end
-	pSelf.ScrollFrame.scrollBar:SetValue(offset, true);
+	_ScrollFrame.scrollBar:SetValue(_ScrollFrame.scrollBar.scrollValue, true);
 end
 
-function MyHybridScrollFrame_Update(pSelf, pTotalHeight, pDisplayedHeight)
-	if pSelf == WardrobeCollectionFrameScrollFrame then
-		local offset = HybridScrollFrame_GetOffset(pSelf);
-		offset = offset + 1;
-		local baseSets = _SetsDataProvider:GetBaseSets();
-		local index = 0;
-		local indexButton = 1; 
-		for _, baseSet in pairs(baseSets) do
-			if indexButton > #pSelf.buttons then
-				break;
-			end
-			index = index + 1;
-			local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
-			if #variantSets == 0 then
-				if offset <= index then
-					BindSet(pSelf.buttons[indexButton], baseSet, baseSet, true);
-					indexButton = indexButton + 1;
-				end
-			else
-				if offset <= index then
-					BindSet(pSelf.buttons[indexButton], baseSet, variantSets[1], true);
-					indexButton = indexButton + 1;
-				end
-				for i = 2, #variantSets do
-					if indexButton > #pSelf.buttons then
-						break;
-					end
-					index = index + 1;
-					if offset <= index then
-						BindSet(pSelf.buttons[indexButton], baseSet, variantSets[i], false);
-						indexButton = indexButton + 1;
-					end	
-				end
-			end
-		end
-		
-		local extraHeight = (pSelf.largeButtonHeight and pSelf.largeButtonHeight - _ButtonHeight) or 0;
-		pTotalHeight = _CountAll * _ButtonHeight + extraHeight;
-		local range = math.floor(pTotalHeight - pSelf:GetHeight() + 0.5);
-		if range > 0 and pSelf.scrollBar then
-			local minVal, maxVal = pSelf.scrollBar:GetMinMaxValues();
-			if math.floor(pSelf.scrollBar:GetValue()) >= math.floor(maxVal) then
-				pSelf.scrollBar:SetMinMaxValues(0, range)
-				if math.floor(pSelf.scrollBar:GetValue()) ~= math.floor(range) then
-					pSelf.scrollBar:SetValue(range);
-				else
-					HybridScrollFrame_SetOffset(pSelf, range); 
-				end
-			else
-				pSelf.scrollBar:SetMinMaxValues(0, range)
-			end
-			pSelf.scrollBar:Enable();
-			HybridScrollFrame_UpdateButtonStates(pSelf);
-			pSelf.scrollBar:Show();
-		end
-		
-		pSelf.range = range;
-		pSelf.scrollChild:SetHeight(pDisplayedHeight);
-		pSelf:UpdateScrollChildRect();
-	else 
-		OriginHybridScrollFrame_Update(pSelf, pTotalHeight, pDisplayedHeight)
-	end
-end
-
-local function HookSelectSet(pSelf, pSetID)
-	_PrevSelectSetID = _CurSelectSetID;
-	_CurSelectSetID = pSetID;
-end
-
-local function HookScrollSetValue(pSelf, pValue)
-	_PrevScrollValue = _CurScrollValue;
-	_CurScrollValue = pValue;
-end
-
-local function HookHandleKey(pSelf, pKey)
-	local selectedSetID = pSelf:GetSelectedSetID();
-	if not selectedSetID then
+local function ScrollFrame_HandleKey(pKey)
+	if not _ScrollFrame.selectedSetID then
 		return;
 	end
 	
@@ -236,7 +220,7 @@ local function HookHandleKey(pSelf, pKey)
 					nextSet = variantSet;
 					break;
 				end
-				if _PrevSelectSetID == variantSet.setID then
+				if _ScrollFrame.selectedSetID == variantSet.setID then
 					curSet = variantSet;
 				else
 					prevSet = variantSet;
@@ -245,7 +229,7 @@ local function HookHandleKey(pSelf, pKey)
 		else
 			if curSet then
 				nextSet = baseSet;
-			elseif _PrevSelectSetID == baseSet.setID then
+			elseif _ScrollFrame.selectedSetID == baseSet.setID then
 				curSet = baseSet;
 			else
 				prevSet = baseSet;
@@ -257,51 +241,144 @@ local function HookHandleKey(pSelf, pKey)
 	end
 	if pKey == WARDROBE_DOWN_VISUAL_KEY then
 		if nextSet then
-			pSelf:SelectSet(nextSet.setID);
-			ScrollToSet(pSelf, nextSet.setID);
+			ScrollFrame_SelectSet(nextSet.setID);
+			ScrollFrame_ScrollToSet(nextSet.setID);
 		end
 	elseif pKey == WARDROBE_UP_VISUAL_KEY then
 		if prevSet then
-			pSelf:SelectSet(prevSet.setID);
-			ScrollToSet(pSelf, prevSet.setID);
+			ScrollFrame_SelectSet(prevSet.setID);
+			ScrollFrame_ScrollToSet(prevSet.setID);
 		end
 	end
 end
 
+local function FavoriteDropDown_Init(pSelf)
+	if not _ScrollFrame.menuInitBaseSetID then
+		return;
+	end
+
+	local baseSet = _SetsDataProvider:GetBaseSetByID(_ScrollFrame.menuInitBaseSetID);
+	local variantSets = _SetsDataProvider:GetVariantSets(_ScrollFrame.menuInitBaseSetID);
+	local useDescription = (#variantSets > 0);
+
+	local info1 = UIDropDownMenu_CreateInfo();
+	info1.notCheckable = true;
+	info1.disabled = nil;
+	if baseSet.favoriteSetID then
+		if useDescription then
+			local setInfo = C_TransmogSets.GetSetInfo(baseSet.favoriteSetID);
+			info1.text = format(TRANSMOG_SETS_UNFAVORITE_WITH_DESCRIPTION, setInfo.description);
+		else
+			info1.text = BATTLE_PET_UNFAVORITE;
+		end
+		info1.func = function()
+			C_TransmogSets.SetIsFavorite(baseSet.favoriteSetID, false);
+		end
+	else
+		local targetSetID = WardrobeCollectionFrame.SetsCollectionFrame:GetDefaultSetIDForBaseSet(_ScrollFrame.menuInitBaseSetID);
+		if useDescription then
+			local setInfo = C_TransmogSets.GetSetInfo(targetSetID);
+			info1.text = format(TRANSMOG_SETS_FAVORITE_WITH_DESCRIPTION, setInfo.description);
+		else
+			info1.text = BATTLE_PET_FAVORITE;
+		end
+		info1.func = function()
+			C_TransmogSets.SetIsFavorite(targetSetID, true);
+		end
+	end
+	UIDropDownMenu_AddButton(info1, 1);
+  
+	--local info2 = UIDropDownMenu_CreateInfo();
+	--info2.notCheckable = true;
+	--info2.disabled = nil;
+	--info2.text = CANCEL;
+	--info2.func = nil;
+	--UIDropDownMenu_AddButton(info2, 1);
+end
+
+
+local SetCollection = nil;
 local frame = CreateFrame("frame"); 
 frame:RegisterEvent("ADDON_LOADED");
 frame:SetScript("OnEvent", function(pSelf, pEvent, pUnit)
 	if pEvent == "ADDON_LOADED" and pUnit == "Blizzard_Collections" then
+		WardrobeCollectionFrameScrollFrame:Hide();
+		
 		_ButtonHeight = WardrobeCollectionFrameScrollFrame.buttons[1]:GetHeight();
+		
 		_SetsDataProvider = CreateFromMixins(WardrobeSetsDataProviderMixin);
-		_CurSelectSetID = _SetsDataProvider:GetBaseSets()[1].setID;
-		_CurScrollValue = 0;
-		local variantSets = _SetsDataProvider:GetVariantSets(_CurSelectSetID);
-		if #variantSets > 0 then
-			_CurSelectSetID = variantSets[1].setID;
+		
+		_ScrollFrame = CreateFrame("ScrollFrame", "SetCollectionUngroupScrollFrame", WardrobeCollectionFrame.SetsCollectionFrame, "HybridScrollFrameTemplate");
+		_ScrollFrame:SetAllPoints(WardrobeCollectionFrameScrollFrame);
+		
+		_ScrollFrame.scrollBar = CreateFrame("Slider", "SetCollectionUngroupScrollFrameScrollBar", _ScrollFrame, "HybridScrollBarTrimTemplate");
+		_ScrollFrame.scrollBar:SetAllPoints(WardrobeCollectionFrameScrollFrame.scrollBar);
+		_ScrollFrame.scrollBar:SetScript("OnValueChanged", function(pSelf, pValue) 
+			pSelf.scrollValue = pValue;
+			HybridScrollFrame_OnValueChanged(pSelf, pValue);
+			ScrollFrame_Update();
+		end);
+		_ScrollFrame.scrollBar.trackBG:Show();
+		_ScrollFrame.scrollBar.trackBG:SetVertexColor(0, 0, 0, 0.75);
+		_ScrollFrame.scrollBar.scrollValue = 0;
+		
+		HybridScrollFrame_CreateButtons(_ScrollFrame, "WardrobeSetsScrollFrameButtonTemplate", 44, 0);
+		for _, button in pairs(_ScrollFrame.buttons) do
+			button.ProgressBar:SetTexture(1, 1, 1);
+			button:RegisterForClicks("AnyUp", "AnyDown");
+			button:SetScript("OnMouseUp", function(pSelf, pButton, pDown)
+				if pButton == "LeftButton" then
+					--PlaySound("igMainMenuOptionCheckBoxOn");
+					CloseDropDownMenus();
+					ScrollFrame_SelectSet(pSelf.setVariantID);
+				elseif pButton == "RightButton" then
+					_ScrollFrame.menuInitBaseSetID = pSelf.setID;
+					ToggleDropDownMenu(1, nil, _FavoriteDropDown, pSelf, 0, 0);
+					--PlaySound("igMainMenuOptionCheckBoxOn");
+				end
+			end)
 		end
-		WardrobeCollectionFrame.SetsCollectionFrame:SelectSet(_CurSelectSetID);
 		
-		CalculateCount()
+		_ScrollFrame.selectedSetID = _SetsDataProvider:GetBaseSets()[1].setID;
+		local variantSets = _SetsDataProvider:GetVariantSets(_ScrollFrame.selectedSetID);
+		if #variantSets > 0 then
+			_ScrollFrame.selectedSetID = variantSets[1].setID;
+		end
+		WardrobeCollectionFrame.SetsCollectionFrame:SelectSet(_ScrollFrame.selectedSetID);
 		
-		OriginHybridScrollFrame_Update = HybridScrollFrame_Update;
-		HybridScrollFrame_Update = MyHybridScrollFrame_Update;
+		_FavoriteDropDown = CreateFrame("Frame", "SetCollectionUngroupFavoriteDropDown", _ScrollFrame, "UIDropDownMenuTemplate");
+		UIDropDownMenu_Initialize(_FavoriteDropDown, FavoriteDropDown_Init, "MENU");
+
+		hooksecurefunc(WardrobeCollectionFrameScrollFrame, "update", function(pSelf)
+			_ScrollFrame.selectedSetID = WardrobeCollectionFrame.SetsCollectionFrame:GetSelectedSetID();
+			ScrollFrame_Update();
+		end);
+		hooksecurefunc(WardrobeCollectionFrameScrollFrame, "Update", function(pSelf)
+			_ScrollFrame.selectedSetID = WardrobeCollectionFrame.SetsCollectionFrame:GetSelectedSetID();
+			ScrollFrame_Update();
+		end);
 		
-		hooksecurefunc(WardrobeCollectionFrame.SetsCollectionFrame, "HandleKey", HookHandleKey);
-		hooksecurefunc(WardrobeCollectionFrame.SetsCollectionFrame, "SelectSet", HookSelectSet);
-		hooksecurefunc(WardrobeCollectionFrame.SetsCollectionFrame.ScrollFrame.scrollBar, "SetValue", HookScrollSetValue);
-		
-		frame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED");
-		frame:RegisterEvent("PLAYER_REGEN_ENABLED");
-		frame:RegisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
-	elseif pEvent == "TRANSMOG_COLLECTION_UPDATED" and _SetsDataProvider then
-		_SetsDataProvider:ClearSets();
-		CalculateCount()
-	elseif pEvent == "PLAYER_REGEN_ENABLED" and _SetsDataProvider then
-		_SetsDataProvider:ClearSets();
-		CalculateCount()
-	elseif pEvent == "TRANSMOG_SETS_UPDATE_FAVORITE" and _SetsDataProvider then
-		_SetsDataProvider:ClearSets();
-		CalculateCount()
+		_ScrollFrame:SetScript("OnShow", function(pSelf) 
+			print("OnShow");
+			ScrollFrame_Update();
+			frame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED");
+			frame:RegisterEvent("PLAYER_REGEN_ENABLED");
+			frame:RegisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
+		end);
+		_ScrollFrame:SetScript("OnHide", function(pSelf) 
+			print("OnHide");
+			frame:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED");
+			frame:UnregisterEvent("PLAYER_REGEN_ENABLED");
+			frame:UnregisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
+		end);
+		_ScrollFrame:SetScript("OnKeyDown", function(pSelf, pKey)
+			ScrollFrame_HandleKey(pKey);
+		end);
+	elseif _ScrollFrame then 
+		print(pEvent)
+		if pEvent == "TRANSMOG_SETS_UPDATE_FAVORITE" then
+			WardrobeCollectionFrameScrollFrame:OnEvent(pEvent);
+		end
+		ScrollFrame_Update();
 	end
 end)

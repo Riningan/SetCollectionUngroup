@@ -2,6 +2,10 @@
 
 Ungrouping sets collection.
 
-Supported client version 7.2.5.
+Showing progress bar on completed sets.
+
+Changing progress bar color.
+
+Supported client version 7.3.0.
 
 ![demo_preview](./preview.png)
