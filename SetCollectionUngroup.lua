@@ -359,14 +359,12 @@ frame:SetScript("OnEvent", function(pSelf, pEvent, pUnit)
 		end);
 		
 		_ScrollFrame:SetScript("OnShow", function(pSelf) 
-			print("OnShow");
 			ScrollFrame_Update();
 			frame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED");
 			frame:RegisterEvent("PLAYER_REGEN_ENABLED");
 			frame:RegisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
 		end);
 		_ScrollFrame:SetScript("OnHide", function(pSelf) 
-			print("OnHide");
 			frame:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED");
 			frame:UnregisterEvent("PLAYER_REGEN_ENABLED");
 			frame:UnregisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
@@ -375,7 +373,6 @@ frame:SetScript("OnEvent", function(pSelf, pEvent, pUnit)
 			ScrollFrame_HandleKey(pKey);
 		end);
 	elseif _ScrollFrame then 
-		print(pEvent)
 		if pEvent == "TRANSMOG_SETS_UPDATE_FAVORITE" then
 			WardrobeCollectionFrameScrollFrame:OnEvent(pEvent);
 		end
