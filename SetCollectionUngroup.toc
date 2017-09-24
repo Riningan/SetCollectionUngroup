@@ -2,6 +2,6 @@
 ## Title: SetCollectionUngroup
 ## Notes: Ungrouping sets collection.
 ## Author: Riningan
-## Version: 1.2
+## Version: 1.2.2
 
 SetCollectionUngroup.lua

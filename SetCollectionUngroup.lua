@@ -204,14 +204,20 @@ local function ScrollFrame_ScrollToSet(pSetID)
 end
 
 local function ScrollFrame_HandleKey(pKey)
-	if not _ScrollFrame.selectedSetID then
+	if pKey ~= WARDROBE_DOWN_VISUAL_KEY and pKey ~= WARDROBE_UP_VISUAL_KEY then
+		_ScrollFrame:SetPropagateKeyboardInput(true);
 		return;
 	end
 	
-	local baseSets = _SetsDataProvider:GetBaseSets();
+	if not _ScrollFrame.selectedSetID then
+		_ScrollFrame:SetPropagateKeyboardInput(true);
+		return;
+	end
+	
 	local prevSet = nil;
 	local curSet = nil;
 	local nextSet = nil;
+	local baseSets = _SetsDataProvider:GetBaseSets();
 	for _, baseSet in pairs(baseSets) do
 		local variantSets = _SetsDataProvider:GetVariantSets(baseSet.setID);
 		if #variantSets > 0 then
@@ -219,8 +225,7 @@ local function ScrollFrame_HandleKey(pKey)
 				if curSet then
 					nextSet = variantSet;
 					break;
-				end
-				if _ScrollFrame.selectedSetID == variantSet.setID then
+				elseif _ScrollFrame.selectedSetID == variantSet.setID then
 					curSet = variantSet;
 				else
 					prevSet = variantSet;
@@ -239,6 +244,7 @@ local function ScrollFrame_HandleKey(pKey)
 			break;
 		end
 	end
+	_ScrollFrame:SetPropagateKeyboardInput(false);
 	if pKey == WARDROBE_DOWN_VISUAL_KEY then
 		if nextSet then
 			ScrollFrame_SelectSet(nextSet.setID);
@@ -359,14 +365,12 @@ frame:SetScript("OnEvent", function(pSelf, pEvent, pUnit)
 		end);
 		
 		_ScrollFrame:SetScript("OnShow", function(pSelf) 
-			print("OnShow");
 			ScrollFrame_Update();
 			frame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED");
 			frame:RegisterEvent("PLAYER_REGEN_ENABLED");
 			frame:RegisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
 		end);
 		_ScrollFrame:SetScript("OnHide", function(pSelf) 
-			print("OnHide");
 			frame:UnregisterEvent("TRANSMOG_COLLECTION_UPDATED");
 			frame:UnregisterEvent("PLAYER_REGEN_ENABLED");
 			frame:UnregisterEvent("TRANSMOG_SETS_UPDATE_FAVORITE");
@@ -375,7 +379,6 @@ frame:SetScript("OnEvent", function(pSelf, pEvent, pUnit)
 			ScrollFrame_HandleKey(pKey);
 		end);
 	elseif _ScrollFrame then 
-		print(pEvent)
 		if pEvent == "TRANSMOG_SETS_UPDATE_FAVORITE" then
 			WardrobeCollectionFrameScrollFrame:OnEvent(pEvent);
 		end
