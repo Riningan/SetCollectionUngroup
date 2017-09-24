@@ -1,11 +1,10 @@
 # SetCollectionUngroup
+World of WarCraft Addon
 
-Ungrouping sets collection.
-
-Showing progress bar on completed sets.
-
-Changing progress bar color.
-
-Supported client version 7.3.0.
+##Features
+ungrouping sets collection;
+showing progress bar on completed sets;
+changing progress bar color;
+supported client version 7.3.0;
 
 ![demo_preview](./preview.png)
